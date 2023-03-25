@@ -9,22 +9,24 @@ import (
 )
 
 var (
-	ErrPathNotFound = errors.New("path not found")
+	ErrPathNotFound       = errors.New("path not found")
 	ErrWrongStockInstance = errors.New("wrong instance released")
 )
 
+// TODO: add threads
 type StockInstance struct {
-	id guuid.UUID
+	id     guuid.UUID
 	Engine *uci.Engine
 }
 
 type StockPool struct {
-	idSet map[guuid.UUID]bool
-	pool chan *StockInstance
+	idSet   map[guuid.UUID]bool
+	pool    chan *StockInstance
+	threads int
 	timeout int
 }
 
-func NewStockPool(path string, limit int, timeout int) (*StockPool, error) {
+func NewStockPool(path string, limit, threads, timeout int) (*StockPool, error) {
 	idSet := make(map[guuid.UUID]bool)
 	ch := make(chan *StockInstance, limit)
 
@@ -33,22 +35,19 @@ func NewStockPool(path string, limit int, timeout int) (*StockPool, error) {
 		if err != nil {
 			return nil, ErrPathNotFound
 		}
-		eng.Run(uci.CmdSetOption{
-			Name: "MultiPV",
-			Value: "50",
-		})
 
 		id := guuid.New()
 		idSet[id] = true
 		ch <- &StockInstance{
-			id: id,
+			id:     id,
 			Engine: eng,
 		}
 	}
 
 	return &StockPool{
-		idSet: idSet, 
-		pool: ch,
+		idSet:   idSet,
+		pool:    ch,
+		threads: threads,
 		timeout: timeout,
 	}, nil
 }
@@ -56,7 +55,7 @@ func NewStockPool(path string, limit int, timeout int) (*StockPool, error) {
 func (sp *StockPool) Acquire() *StockInstance {
 	for {
 		select {
-		case instance := <- sp.pool:
+		case instance := <-sp.pool:
 			return instance
 		default:
 			time.Sleep(time.Duration(sp.timeout) * time.Millisecond)
@@ -73,4 +72,3 @@ func (sp *StockPool) Release(si *StockInstance) error {
 	sp.pool <- si
 	return nil
 }
-

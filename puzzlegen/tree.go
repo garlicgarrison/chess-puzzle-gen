@@ -5,7 +5,7 @@ import (
 )
 
 type MoveNode struct {
-	move string
+	move *chess.Move
 	responses []*MoveNode
 }
 
