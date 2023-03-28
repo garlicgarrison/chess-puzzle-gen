@@ -179,11 +179,23 @@ func GenerateRandomFEN(cfg PuzzleConfig) (string, error) {
 
 	var sb strings.Builder
 	for i, row := range board {
+		empty := 0
 		for _, val := range row {
 			if val == 0 {
-				sb.WriteRune('1')
+				empty++
+				continue
 			}
+
+			if empty != 0 {
+				sb.WriteString(fmt.Sprintf("%d", empty))
+			}
+
 			sb.WriteRune(bitToPiece[val])
+			empty = 0
+		}
+
+		if empty != 0 {
+			sb.WriteString(fmt.Sprintf("%d", empty))
 		}
 
 		if i != 7 {
@@ -191,10 +203,12 @@ func GenerateRandomFEN(cfg PuzzleConfig) (string, error) {
 		}
 	}
 
-	// Randomly choose side
+	// Randomly choose side -- 0 for black 1 for white
+	player := 0
 	if rand.Intn(2) == 0 {
 		sb.WriteString(" b")
 	} else {
+		player = 1
 		sb.WriteString(" w")
 	}
 
@@ -228,10 +242,13 @@ func GenerateRandomFEN(cfg PuzzleConfig) (string, error) {
 
 EnPassant:
 	sb.WriteRune(' ')
-	eSquare := rand.Intn(16)
-	if board[eSquare/8+3][eSquare%8] == pieceToBit['p'] || board[eSquare/8+3][eSquare%8] == pieceToBit['P'] {
-		sb.WriteRune(rune(eSquare%8 + 97))
-		sb.WriteString(fmt.Sprintf("%d", eSquare/8+3))
+	eSquare := rand.Intn(8)
+	if player == 0 && board[3][eSquare] == pieceToBit['p'] && board[2][eSquare]+board[1][eSquare] == 0 {
+		sb.WriteRune(rune(eSquare + 97))
+		sb.WriteString(fmt.Sprintf("%d", 6))
+	} else if player == 1 && board[4][eSquare] == pieceToBit['P'] && board[5][eSquare]+board[6][eSquare] == 0 {
+		sb.WriteRune(rune(eSquare + 97))
+		sb.WriteString(fmt.Sprintf("%d", 3))
 	} else {
 		sb.WriteRune('-')
 	}

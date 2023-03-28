@@ -4,11 +4,15 @@ import (
 	"errors"
 	"log"
 	"strconv"
-	"sync"
 
 	"github.com/garlicgarrison/chess-puzzle-gen/stockpool"
 	chess "github.com/garlicgarrison/go-chess"
 	"github.com/garlicgarrison/go-chess/uci"
+)
+
+const (
+	MAX_PROCESSES = 10
+	TIMEOUT       = 1000
 )
 
 /*
@@ -28,72 +32,84 @@ type AnalysisConfig struct {
 	MultiPV int
 }
 
-type MatePuzzleGenerator struct {
-	analysisCfg AnalysisConfig
-	pool        *stockpool.StockPool
-	q           chan *chess.Position
-	cache       map[string]bool
-	mutex       sync.Mutex
-	quit        chan bool
+type Cfg struct {
+	AnalysisConfig
+	PuzzleConfig
 }
 
-func NewMatePuzzleGenerator(analysisConfig AnalysisConfig, pool *stockpool.StockPool, queueLimit int) Generator[*chess.Position] {
+type MatePuzzleGenerator struct {
+	cfg   Cfg
+	pool  *stockpool.StockPool
+	write func([]*chess.Game)
+	q     chan *chess.Position
+	quit  chan bool
+}
+
+func NewMatePuzzleGenerator(cfg Cfg, pool *stockpool.StockPool, write func([]*chess.Game), queueLimit int) Generator[*chess.Position] {
 	return &MatePuzzleGenerator{
-		analysisCfg: analysisConfig,
-		pool:        pool,
-		q:           make(chan *chess.Position, queueLimit),
-		cache:       make(map[string]bool),
-		quit:        make(chan bool),
-		mutex:       sync.Mutex{},
+		cfg:   cfg,
+		pool:  pool,
+		write: write,
+		q:     make(chan *chess.Position, queueLimit),
+		quit:  make(chan bool),
 	}
 }
 
 func (g *MatePuzzleGenerator) Start() {
 	go func() {
 		for {
-			quit := false
-			select {
-			case position := <-g.q:
-				go func() {
-					solutions := g.getMateSolutions(position)
-					log.Printf("%d solutions found...", len(solutions))
-					if len(solutions) > 0 {
-						log.Printf("Puzzle position: %s", position.String())
-						log.Printf("Puzzle solution: %v", solutions[0].Moves())
-						for _, m := range solutions[0].Moves() {
-							log.Printf("Puzzle solution: %v", m.String())
-						}
-					}
-				}()
-			case <-g.quit:
-				log.Printf("Goodbye :)")
-				quit = true
+			// quit := false
+			// select {
+			// case position := <-g.q:
+			// 	go func() {
+			// 		solutions := g.getMateSolutions(position)
+
+			// 		if len(solutions) > 0 {
+			// 			log.Printf("Puzzle position: %s", position.String())
+			// 			log.Printf("Puzzle solution: %v", solutions[0].Moves())
+			// 		}
+			// 	}()
+			// case <-g.quit:
+			// 	quit = true
+			// }
+
+			// if quit {
+			// 	break
+			// }
+			fen, err := GenerateRandomFEN(g.cfg.PuzzleConfig)
+			if err != nil {
+				log.Printf("error -- %s", err)
 			}
 
-			if quit {
-				break
+			f, err := chess.FEN(fen)
+			if err != nil {
+				log.Printf("error -- %s", err)
 			}
+			game := chess.NewGame(f)
+
+			solutions := g.create(game.Position())
+			g.write(solutions)
 		}
 	}()
-
 }
 
-func (g *MatePuzzleGenerator) Add(position *chess.Position) error {
-	if g.cache[position.String()] {
+func (g *MatePuzzleGenerator) create(position *chess.Position) []*chess.Game {
+	solutions := g.getMateSolutions(position)
+	if len(solutions) == 0 {
 		return nil
 	}
 
-	select {
-	case g.q <- position:
-		g.mutex.Lock()
-		g.cache[position.String()] = true
-		g.mutex.Unlock()
-
-		return nil
-	default:
-		return ErrQueueFull
-	}
+	return solutions
 }
+
+// func (g *MatePuzzleGenerator) Add(position *chess.Position) error {
+// 	select {
+// 	case g.q <- position:
+// 		return nil
+// 	default:
+// 		return ErrQueueFull
+// 	}
+// }
 
 func (g *MatePuzzleGenerator) Close() {
 	g.quit <- true
@@ -106,7 +122,7 @@ func (g *MatePuzzleGenerator) analyzePosition(position *chess.Position, depth in
 	}
 
 	cmdPos := uci.CmdPosition{Position: position}
-	cmdGo := uci.CmdGo{Depth: g.analysisCfg.Depth}
+	cmdGo := uci.CmdGo{Depth: g.cfg.Depth}
 
 	instance := g.pool.Acquire()
 	instance.Engine.Run(uci.CmdSetOption{
@@ -191,7 +207,7 @@ func (g *MatePuzzleGenerator) getMateSolutions(position *chess.Position) []*ches
 	that have the same exact score, therefore, the result is incomplete and invalid
 */
 func (g *MatePuzzleGenerator) getMateMoves(position *chess.Position) []*chess.Move {
-	search := g.analyzePosition(position, g.analysisCfg.Depth, g.analysisCfg.MultiPV)
+	search := g.analyzePosition(position, g.cfg.Depth, g.cfg.MultiPV)
 
 	if search == nil {
 		return nil
@@ -224,7 +240,7 @@ func (g *MatePuzzleGenerator) getMateMoves(position *chess.Position) []*chess.Mo
 }
 
 func (g *MatePuzzleGenerator) getBestMove(position *chess.Position) *chess.Move {
-	search := g.analyzePosition(position, g.analysisCfg.Depth, 1)
+	search := g.analyzePosition(position, g.cfg.Depth, 1)
 	if search == nil {
 		return nil
 	}
