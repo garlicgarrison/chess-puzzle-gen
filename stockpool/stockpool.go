@@ -2,6 +2,7 @@ package stockpool
 
 import (
 	"errors"
+	"strconv"
 	"time"
 
 	"github.com/garlicgarrison/go-chess/uci"
@@ -35,6 +36,11 @@ func NewStockPool(path string, limit, threads, timeout int) (*StockPool, error) 
 		if err != nil {
 			return nil, ErrPathNotFound
 		}
+
+		eng.Run(uci.CmdSetOption{
+			Name:  "Threads",
+			Value: strconv.FormatInt(int64(threads), 10),
+		})
 
 		id := guuid.New()
 		idSet[id] = true

@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/json"
 	"io/ioutil"
 	"log"
 	"os"
@@ -24,6 +25,7 @@ const (
 func main() {
 	var depth int
 	var multipv int
+	var threads int
 
 	rootCmd := &cobra.Command{
 		Use:   "puzzlegen",
@@ -31,7 +33,7 @@ func main() {
 		Long:  "Generate beautiful puzzles",
 		Run: func(cmd *cobra.Command, args []string) {
 			// initialize stockfish pool
-			pool, err := stockpool.NewStockPool(CRYSTALPATH, 10, 4, 10)
+			pool, err := stockpool.NewStockPool(CRYSTALPATH, 10, threads, 10)
 			if err != nil {
 				panic(err)
 			}
@@ -72,12 +74,55 @@ func main() {
 
 	rootCmd.Flags().IntVarP(&depth, "depth", "d", 0, "The depth parameter")
 	rootCmd.Flags().IntVarP(&multipv, "multipv", "m", 0, "The multipv parameter")
+	rootCmd.Flags().IntVarP(&multipv, "threads", "t", 2, "The threads parameter")
 
 	if err := rootCmd.Execute(); err != nil {
 		log.Fatalf("Error -- %s", err)
 	}
 }
 
-func write(sols []*chess.Game) {
-	log.Printf("puzzle moves: %v", sols[0].Moves())
+type Puzzle struct {
+	Position  string     `json:"position"`
+	Solutions [][]string `json:"solutions"`
+}
+
+type Puzzles struct {
+	Puzzles []Puzzle `json:"puzzles"`
+}
+
+func write(fen string, sols []*chess.Game) {
+	f, err := ioutil.ReadFile("puzzles.json")
+	if err != nil {
+		return
+	}
+
+	p := &Puzzles{}
+	err = json.Unmarshal(f, p)
+	if err != nil {
+		return
+	}
+
+	puzzle := Puzzle{
+		Position:  fen,
+		Solutions: [][]string{},
+	}
+	for _, s := range sols {
+		solution := []string{}
+		for _, m := range s.Moves() {
+			solution = append(solution, m.String())
+		}
+
+		puzzle.Solutions = append(puzzle.Solutions, solution)
+	}
+	p.Puzzles = append(p.Puzzles, puzzle)
+
+	b, err := json.Marshal(p)
+	if err != nil {
+		return
+	}
+
+	err = ioutil.WriteFile("puzzles.json", b, 0777)
+	if err != nil {
+		return
+	}
 }

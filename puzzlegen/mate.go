@@ -3,6 +3,7 @@ package puzzlegen
 import (
 	"errors"
 	"log"
+	"sort"
 	"strconv"
 
 	"github.com/garlicgarrison/chess-puzzle-gen/stockpool"
@@ -40,12 +41,12 @@ type Cfg struct {
 type MatePuzzleGenerator struct {
 	cfg   Cfg
 	pool  *stockpool.StockPool
-	write func([]*chess.Game)
+	write func(string, []*chess.Game)
 	q     chan *chess.Position
 	quit  chan bool
 }
 
-func NewMatePuzzleGenerator(cfg Cfg, pool *stockpool.StockPool, write func([]*chess.Game), queueLimit int) Generator[*chess.Position] {
+func NewMatePuzzleGenerator(cfg Cfg, pool *stockpool.StockPool, write func(string, []*chess.Game), queueLimit int) Generator[*chess.Position] {
 	return &MatePuzzleGenerator{
 		cfg:   cfg,
 		pool:  pool,
@@ -72,7 +73,7 @@ func (g *MatePuzzleGenerator) Start() {
 
 			solutions := g.create(game.Position())
 			if solutions != nil {
-				g.write(solutions)
+				g.write(fen, solutions)
 			}
 		}
 	}()
@@ -82,6 +83,7 @@ func (g *MatePuzzleGenerator) Close() {
 	g.quit <- true
 }
 
+// TODO: make into a tree
 func (g *MatePuzzleGenerator) create(position *chess.Position) []*chess.Game {
 	solutions := g.mateSolutions(position)
 	if len(solutions) == 0 {
@@ -122,7 +124,7 @@ func (g *MatePuzzleGenerator) analyzePosition(position *chess.Position, depth in
 /*
 	Returns a move tree given a position and results
 	1. If it is the opponent's move, just return their best move
-	2. If own move, we rank our moves and look deeper
+	2. We only need to check the moves after the mate solution is found
 */
 func (g *MatePuzzleGenerator) mateSolutions(position *chess.Position) []*chess.Game {
 	startPos, err := chess.FEN(position.String())
@@ -138,7 +140,6 @@ func (g *MatePuzzleGenerator) mateSolutions(position *chess.Position) []*chess.G
 	queue := []*chess.Game{startGame}
 	solutions := []*chess.Game{}
 	for len(queue) > 0 {
-		solutionFound := false
 		queueLen := len(queue)
 
 		for i := 0; i < queueLen; i++ {
@@ -147,7 +148,7 @@ func (g *MatePuzzleGenerator) mateSolutions(position *chess.Position) []*chess.G
 
 			mateMoves := g.mateMoves(currGame.Position())
 			if len(mateMoves) == 0 {
-				return nil
+				return solutions
 			}
 
 			for _, move := range mateMoves {
@@ -160,20 +161,13 @@ func (g *MatePuzzleGenerator) mateSolutions(position *chess.Position) []*chess.G
 				if (newGame.Outcome() == chess.BlackWon || newGame.Outcome() == chess.WhiteWon) &&
 					newGame.Method() == chess.Checkmate {
 					solutions = append(solutions, newGame)
-					solutionFound = true
 					continue
 				}
 
-				if !solutionFound {
-					move := g.getBestMove(newGame.Position())
-					newGame.Move(move)
-					queue = append(queue, newGame)
-				}
+				move := g.getBestMove(newGame.Position())
+				newGame.Move(move)
+				queue = append(queue, newGame)
 			}
-		}
-
-		if solutionFound {
-			break
 		}
 	}
 
@@ -183,6 +177,8 @@ func (g *MatePuzzleGenerator) mateSolutions(position *chess.Position) []*chess.G
 /*
 	NOTE: if all the scores are the same, there could possibly be other lines
 	that have the same exact score, therefore, the result is incomplete and invalid
+
+	This returns the moves with the shortest mating moves
 */
 func (g *MatePuzzleGenerator) mateMoves(position *chess.Position) []*chess.Move {
 	search := g.analyzePosition(position, g.cfg.Depth, g.cfg.MultiPV)
@@ -192,26 +188,30 @@ func (g *MatePuzzleGenerator) mateMoves(position *chess.Position) []*chess.Move 
 	}
 
 	pvs := search.MultiPV
+	sort.Slice(pvs, func(i, j int) bool {
+		return pvs[i].Score.Mate < pvs[j].Score.Mate
+	})
+
 	possibleLines := make(map[string]bool)
 	moves := []*chess.Move{}
 	prev := -1
 	allSame := true
 	for _, info := range pvs {
-		if info.Score.Mate <= 0 || possibleLines[info.PV[0].String()] {
+		if info.Score.Mate <= 0 {
 			continue
 		}
 
-		log.Printf("pv %d", info.Score.Mate)
-		if prev != 0 && info.Score.Mate != prev {
+		if prev != -1 && info.Score.Mate != prev {
 			allSame = false
+			break
 		}
 
-		moves = append(moves, info.PV[0])
-		prev = info.Score.Mate
-		possibleLines[info.PV[0].String()] = true
+		if !possibleLines[info.PV[0].String()] {
+			prev = info.Score.Mate
+			possibleLines[info.PV[0].String()] = true
+			moves = append(moves, info.PV[0])
+		}
 	}
-
-	log.Printf("allSame -- %t", allSame)
 
 	if allSame {
 		return nil
