@@ -58,24 +58,6 @@ func NewMatePuzzleGenerator(cfg Cfg, pool *stockpool.StockPool, write func([]*ch
 func (g *MatePuzzleGenerator) Start() {
 	go func() {
 		for {
-			// quit := false
-			// select {
-			// case position := <-g.q:
-			// 	go func() {
-			// 		solutions := g.getMateSolutions(position)
-
-			// 		if len(solutions) > 0 {
-			// 			log.Printf("Puzzle position: %s", position.String())
-			// 			log.Printf("Puzzle solution: %v", solutions[0].Moves())
-			// 		}
-			// 	}()
-			// case <-g.quit:
-			// 	quit = true
-			// }
-
-			// if quit {
-			// 	break
-			// }
 			fen, err := GenerateRandomFEN(g.cfg.PuzzleConfig)
 			if err != nil {
 				log.Printf("error -- %s", err)
@@ -86,15 +68,22 @@ func (g *MatePuzzleGenerator) Start() {
 				log.Printf("error -- %s", err)
 			}
 			game := chess.NewGame(f)
+			log.Printf("new position -- %s", fen)
 
 			solutions := g.create(game.Position())
-			g.write(solutions)
+			if solutions != nil {
+				g.write(solutions)
+			}
 		}
 	}()
 }
 
+func (g *MatePuzzleGenerator) Close() {
+	g.quit <- true
+}
+
 func (g *MatePuzzleGenerator) create(position *chess.Position) []*chess.Game {
-	solutions := g.getMateSolutions(position)
+	solutions := g.mateSolutions(position)
 	if len(solutions) == 0 {
 		return nil
 	}
@@ -102,20 +91,9 @@ func (g *MatePuzzleGenerator) create(position *chess.Position) []*chess.Game {
 	return solutions
 }
 
-// func (g *MatePuzzleGenerator) Add(position *chess.Position) error {
-// 	select {
-// 	case g.q <- position:
-// 		return nil
-// 	default:
-// 		return ErrQueueFull
-// 	}
-// }
-
-func (g *MatePuzzleGenerator) Close() {
-	g.quit <- true
-}
-
-/* This takes the position and returns the search results of that position */
+/*
+	This takes the position and returns the search results of that position
+*/
 func (g *MatePuzzleGenerator) analyzePosition(position *chess.Position, depth int, multiPV int) *uci.SearchResults {
 	if position == nil {
 		return nil
@@ -146,7 +124,7 @@ func (g *MatePuzzleGenerator) analyzePosition(position *chess.Position, depth in
 	1. If it is the opponent's move, just return their best move
 	2. If own move, we rank our moves and look deeper
 */
-func (g *MatePuzzleGenerator) getMateSolutions(position *chess.Position) []*chess.Game {
+func (g *MatePuzzleGenerator) mateSolutions(position *chess.Position) []*chess.Game {
 	startPos, err := chess.FEN(position.String())
 	if err != nil {
 		return nil
@@ -167,7 +145,7 @@ func (g *MatePuzzleGenerator) getMateSolutions(position *chess.Position) []*ches
 			currGame := queue[0]
 			queue = queue[1:]
 
-			mateMoves := g.getMateMoves(currGame.Position())
+			mateMoves := g.mateMoves(currGame.Position())
 			if len(mateMoves) == 0 {
 				return nil
 			}
@@ -206,7 +184,7 @@ func (g *MatePuzzleGenerator) getMateSolutions(position *chess.Position) []*ches
 	NOTE: if all the scores are the same, there could possibly be other lines
 	that have the same exact score, therefore, the result is incomplete and invalid
 */
-func (g *MatePuzzleGenerator) getMateMoves(position *chess.Position) []*chess.Move {
+func (g *MatePuzzleGenerator) mateMoves(position *chess.Position) []*chess.Move {
 	search := g.analyzePosition(position, g.cfg.Depth, g.cfg.MultiPV)
 
 	if search == nil {
@@ -223,6 +201,7 @@ func (g *MatePuzzleGenerator) getMateMoves(position *chess.Position) []*chess.Mo
 			continue
 		}
 
+		log.Printf("pv %d", info.Score.Mate)
 		if prev != 0 && info.Score.Mate != prev {
 			allSame = false
 		}
@@ -231,6 +210,8 @@ func (g *MatePuzzleGenerator) getMateMoves(position *chess.Position) []*chess.Mo
 		prev = info.Score.Mate
 		possibleLines[info.PV[0].String()] = true
 	}
+
+	log.Printf("allSame -- %t", allSame)
 
 	if allSame {
 		return nil

@@ -36,16 +36,7 @@ func main() {
 				panic(err)
 			}
 
-			// initilialize mate generator
-			gen := puzzlegen.NewMatePuzzleGenerator(puzzlegen.AnalysisConfig{
-				Depth:   depth,
-				MultiPV: multipv,
-			}, pool, 10)
-			gen.Start()
-
-			defer gen.Close()
-
-			// initialize feeder
+			// get puzzle config
 			yamlConfig, err := ioutil.ReadFile("config/pieces.yaml")
 			if err != nil {
 				panic(err)
@@ -57,27 +48,17 @@ func main() {
 				panic(err)
 			}
 
-			feeder := puzzlegen.NewPositionFeeder(func() *chess.Position {
-				fen, err := puzzlegen.GenerateRandomFEN(config)
-				if err != nil {
-					log.Printf("FEN: %s", fen)
-					log.Printf("Error -- %s", err)
-					return nil
-				}
+			// initilialize mate generator
+			gen := puzzlegen.NewMatePuzzleGenerator(puzzlegen.Cfg{
+				puzzlegen.AnalysisConfig{
+					Depth:   depth,
+					MultiPV: multipv,
+				},
+				config,
+			}, pool, write, 10)
+			gen.Start()
 
-				gameF, err := chess.FEN(fen)
-				if err != nil {
-					log.Printf("FEN: %s", fen)
-					log.Printf("Error -- %s", err)
-					return nil
-				}
-
-				game := chess.NewGame(gameF)
-				return game.Position()
-			}, gen)
-			feeder.Start(500)
-
-			defer feeder.Close()
+			defer gen.Close()
 
 			// closing operations
 			sigChan := make(chan os.Signal, 1)
@@ -85,6 +66,7 @@ func main() {
 
 			<-sigChan
 			log.Printf("exit")
+			os.Exit(0)
 		},
 	}
 
@@ -94,4 +76,8 @@ func main() {
 	if err := rootCmd.Execute(); err != nil {
 		log.Fatalf("Error -- %s", err)
 	}
+}
+
+func write(sols []*chess.Game) {
+	log.Printf("puzzle moves: %v", sols[0].Moves())
 }

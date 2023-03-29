@@ -162,7 +162,10 @@ func GenerateRandomFEN(cfg PuzzleConfig) (string, error) {
 
 		if board[pRow][pCol] == 0 && !blackAttacks[squareToString(pRow, pCol)] {
 			board[pRow][pCol] = pieceToBit['K']
-			whiteAttacks[squareToString(pRow, pCol)] = true
+			attacks := kingAttacks(board, pRow, pCol)
+			for _, a := range attacks {
+				whiteAttacks[a] = true
+			}
 			break
 		}
 	}
