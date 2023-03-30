@@ -74,7 +74,7 @@ func main() {
 
 	rootCmd.Flags().IntVarP(&depth, "depth", "d", 0, "The depth parameter")
 	rootCmd.Flags().IntVarP(&multipv, "multipv", "m", 0, "The multipv parameter")
-	rootCmd.Flags().IntVarP(&multipv, "threads", "t", 2, "The threads parameter")
+	rootCmd.Flags().IntVarP(&threads, "threads", "t", 0, "The threads parameter")
 
 	if err := rootCmd.Execute(); err != nil {
 		log.Fatalf("Error -- %s", err)
@@ -93,12 +93,14 @@ type Puzzles struct {
 func write(fen string, sols []*chess.Game) {
 	f, err := ioutil.ReadFile("puzzles.json")
 	if err != nil {
+		log.Printf("read error -- %s", err)
 		return
 	}
 
 	p := &Puzzles{}
 	err = json.Unmarshal(f, p)
 	if err != nil {
+		log.Printf("unmarshal error -- %s", err)
 		return
 	}
 
@@ -118,11 +120,13 @@ func write(fen string, sols []*chess.Game) {
 
 	b, err := json.Marshal(p)
 	if err != nil {
+		log.Printf("marshal error -- %s", err)
 		return
 	}
 
 	err = ioutil.WriteFile("puzzles.json", b, 0777)
 	if err != nil {
+		log.Printf("write error -- %s", err)
 		return
 	}
 }

@@ -125,6 +125,8 @@ func (g *MatePuzzleGenerator) analyzePosition(position *chess.Position, depth in
 	Returns a move tree given a position and results
 	1. If it is the opponent's move, just return their best move
 	2. We only need to check the moves after the mate solution is found
+
+	NOTE: decrease the depth every iteration by 1
 */
 func (g *MatePuzzleGenerator) mateSolutions(position *chess.Position) []*chess.Game {
 	startPos, err := chess.FEN(position.String())
@@ -139,6 +141,7 @@ func (g *MatePuzzleGenerator) mateSolutions(position *chess.Position) []*chess.G
 
 	queue := []*chess.Game{startGame}
 	solutions := []*chess.Game{}
+	iterations := 0
 	for len(queue) > 0 {
 		queueLen := len(queue)
 
@@ -146,7 +149,7 @@ func (g *MatePuzzleGenerator) mateSolutions(position *chess.Position) []*chess.G
 			currGame := queue[0]
 			queue = queue[1:]
 
-			mateMoves := g.mateMoves(currGame.Position())
+			mateMoves := g.mateMoves(currGame.Position(), g.cfg.Depth-iterations)
 			if len(mateMoves) == 0 {
 				return solutions
 			}
@@ -164,11 +167,13 @@ func (g *MatePuzzleGenerator) mateSolutions(position *chess.Position) []*chess.G
 					continue
 				}
 
-				move := g.getBestMove(newGame.Position())
+				move := g.getBestMove(newGame.Position(), g.cfg.Depth-iterations)
 				newGame.Move(move)
 				queue = append(queue, newGame)
 			}
 		}
+
+		iterations++
 	}
 
 	return solutions
@@ -180,8 +185,8 @@ func (g *MatePuzzleGenerator) mateSolutions(position *chess.Position) []*chess.G
 
 	This returns the moves with the shortest mating moves
 */
-func (g *MatePuzzleGenerator) mateMoves(position *chess.Position) []*chess.Move {
-	search := g.analyzePosition(position, g.cfg.Depth, g.cfg.MultiPV)
+func (g *MatePuzzleGenerator) mateMoves(position *chess.Position, depth int) []*chess.Move {
+	search := g.analyzePosition(position, depth, g.cfg.MultiPV)
 
 	if search == nil {
 		return nil
@@ -220,8 +225,8 @@ func (g *MatePuzzleGenerator) mateMoves(position *chess.Position) []*chess.Move 
 	return moves
 }
 
-func (g *MatePuzzleGenerator) getBestMove(position *chess.Position) *chess.Move {
-	search := g.analyzePosition(position, g.cfg.Depth, 1)
+func (g *MatePuzzleGenerator) getBestMove(position *chess.Position, depth int) *chess.Move {
+	search := g.analyzePosition(position, depth, 1)
 	if search == nil {
 		return nil
 	}
