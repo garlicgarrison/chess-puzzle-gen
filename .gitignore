@@ -1,2 +1,2 @@
-/vendor
-/puzzles.json
+vendor/
+config/
