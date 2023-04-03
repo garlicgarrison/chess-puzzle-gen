@@ -42,6 +42,11 @@ func NewStockPool(path string, limit, threads, timeout int) (*StockPool, error) 
 			Value: strconv.FormatInt(int64(threads), 10),
 		})
 
+		eng.Run(uci.CmdSetOption{
+			Name:  "Hash",
+			Value: "2048",
+		})
+
 		id := guuid.New()
 		idSet[id] = true
 		ch <- &StockInstance{

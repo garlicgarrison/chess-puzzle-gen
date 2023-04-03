@@ -33,7 +33,7 @@ func main() {
 		Long:  "Generate beautiful puzzles",
 		Run: func(cmd *cobra.Command, args []string) {
 			// initialize stockfish pool
-			pool, err := stockpool.NewStockPool(CRYSTALPATH, 10, threads, 10)
+			pool, err := stockpool.NewStockPool(STOCKFISHPATH, 1, threads, 10)
 			if err != nil {
 				panic(err)
 			}
@@ -82,15 +82,15 @@ func main() {
 }
 
 type Puzzle struct {
-	Position  string     `json:"position"`
-	Solutions [][]string `json:"solutions"`
+	Position string   `json:"position"`
+	Solution []string `json:"solution"`
 }
 
 type Puzzles struct {
 	Puzzles []Puzzle `json:"puzzles"`
 }
 
-func write(fen string, sols []*chess.Game) {
+func write(fen string, sol *chess.Game) {
 	f, err := ioutil.ReadFile("puzzles.json")
 	if err != nil {
 		log.Printf("read error -- %s", err)
@@ -105,17 +105,15 @@ func write(fen string, sols []*chess.Game) {
 	}
 
 	puzzle := Puzzle{
-		Position:  fen,
-		Solutions: [][]string{},
+		Position: fen,
+		Solution: []string{},
 	}
-	for _, s := range sols {
-		solution := []string{}
-		for _, m := range s.Moves() {
-			solution = append(solution, m.String())
-		}
 
-		puzzle.Solutions = append(puzzle.Solutions, solution)
+	solution := []string{}
+	for _, m := range sol.Moves() {
+		solution = append(solution, m.String())
 	}
+	puzzle.Solution = solution
 	p.Puzzles = append(p.Puzzles, puzzle)
 
 	b, err := json.Marshal(p)

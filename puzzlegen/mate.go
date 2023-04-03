@@ -41,12 +41,12 @@ type Cfg struct {
 type MatePuzzleGenerator struct {
 	cfg   Cfg
 	pool  *stockpool.StockPool
-	write func(string, []*chess.Game)
+	write func(string, *chess.Game)
 	q     chan *chess.Position
 	quit  chan bool
 }
 
-func NewMatePuzzleGenerator(cfg Cfg, pool *stockpool.StockPool, write func(string, []*chess.Game), queueLimit int) Generator[*chess.Position] {
+func NewMatePuzzleGenerator(cfg Cfg, pool *stockpool.StockPool, write func(string, *chess.Game), queueLimit int) Generator[*chess.Position] {
 	return &MatePuzzleGenerator{
 		cfg:   cfg,
 		pool:  pool,
@@ -71,9 +71,9 @@ func (g *MatePuzzleGenerator) Start() {
 			game := chess.NewGame(f)
 			log.Printf("new position -- %s", fen)
 
-			solutions := g.create(game.Position())
-			if solutions != nil {
-				g.write(fen, solutions)
+			solution := g.create(game.Position())
+			if solution != nil {
+				g.write(fen, solution)
 			}
 		}
 	}()
@@ -84,13 +84,8 @@ func (g *MatePuzzleGenerator) Close() {
 }
 
 // TODO: make into a tree
-func (g *MatePuzzleGenerator) create(position *chess.Position) []*chess.Game {
-	solutions := g.mateSolutions(position)
-	if len(solutions) == 0 {
-		return nil
-	}
-
-	return solutions
+func (g *MatePuzzleGenerator) create(position *chess.Position) *chess.Game {
+	return g.mateSolutions(position)
 }
 
 /*
@@ -114,7 +109,8 @@ func (g *MatePuzzleGenerator) analyzePosition(position *chess.Position, depth in
 
 	err := instance.Engine.Run(cmdPos, cmdGo)
 	if err != nil {
-		log.Printf("Error --  %s", err)
+		log.Printf("error -- %s -- position: %s", err, position.String())
+		panic(err)
 	}
 
 	res := instance.Engine.SearchResults()
@@ -128,55 +124,37 @@ func (g *MatePuzzleGenerator) analyzePosition(position *chess.Position, depth in
 
 	NOTE: decrease the depth every iteration by 1
 */
-func (g *MatePuzzleGenerator) mateSolutions(position *chess.Position) []*chess.Game {
+func (g *MatePuzzleGenerator) mateSolutions(position *chess.Position) *chess.Game {
 	startPos, err := chess.FEN(position.String())
 	if err != nil {
 		return nil
 	}
 
-	startGame := chess.NewGame(startPos)
-	if startGame == nil {
+	game := chess.NewGame(startPos)
+	if game == nil {
 		return nil
 	}
 
-	queue := []*chess.Game{startGame}
-	solutions := []*chess.Game{}
 	iterations := 0
-	for len(queue) > 0 {
-		queueLen := len(queue)
-
-		for i := 0; i < queueLen; i++ {
-			currGame := queue[0]
-			queue = queue[1:]
-
-			mateMoves := g.mateMoves(currGame.Position(), g.cfg.Depth-iterations)
-			if len(mateMoves) == 0 {
-				return solutions
-			}
-
-			for _, move := range mateMoves {
-				newGame := currGame.Clone()
-				err := newGame.Move(move)
-				if err != nil {
-					continue
-				}
-
-				if (newGame.Outcome() == chess.BlackWon || newGame.Outcome() == chess.WhiteWon) &&
-					newGame.Method() == chess.Checkmate {
-					solutions = append(solutions, newGame)
-					continue
-				}
-
-				move := g.getBestMove(newGame.Position(), g.cfg.Depth-iterations)
-				newGame.Move(move)
-				queue = append(queue, newGame)
-			}
+	exist := false
+	for {
+		mateMove := g.mateMove(game.Position(), g.cfg.Depth-iterations)
+		if mateMove == nil && exist {
+			return game
 		}
+
+		if mateMove == nil && !exist {
+			return nil
+		}
+
+		exist = true
+		game.Move(mateMove)
+
+		bestReply := g.bestMove(game.Position(), g.cfg.Depth-iterations)
+		game.Move(bestReply)
 
 		iterations++
 	}
-
-	return solutions
 }
 
 /*
@@ -185,9 +163,8 @@ func (g *MatePuzzleGenerator) mateSolutions(position *chess.Position) []*chess.G
 
 	This returns the moves with the shortest mating moves
 */
-func (g *MatePuzzleGenerator) mateMoves(position *chess.Position, depth int) []*chess.Move {
+func (g *MatePuzzleGenerator) mateMove(position *chess.Position, depth int) *chess.Move {
 	search := g.analyzePosition(position, depth, g.cfg.MultiPV)
-
 	if search == nil {
 		return nil
 	}
@@ -197,35 +174,30 @@ func (g *MatePuzzleGenerator) mateMoves(position *chess.Position, depth int) []*
 		return pvs[i].Score.Mate < pvs[j].Score.Mate
 	})
 
-	possibleLines := make(map[string]bool)
-	moves := []*chess.Move{}
-	prev := -1
-	allSame := true
+	var solution *chess.Move
+	minMate := -1
 	for _, info := range pvs {
 		if info.Score.Mate <= 0 {
 			continue
 		}
 
-		if prev != -1 && info.Score.Mate != prev {
-			allSame = false
-			break
+		if solution == nil {
+			solution = info.PV[0]
+			minMate = info.Score.Mate
+			continue
 		}
 
-		if !possibleLines[info.PV[0].String()] {
-			prev = info.Score.Mate
-			possibleLines[info.PV[0].String()] = true
-			moves = append(moves, info.PV[0])
+		if minMate == info.Score.Mate {
+			return nil
 		}
+
+		return solution
 	}
 
-	if allSame {
-		return nil
-	}
-
-	return moves
+	return solution
 }
 
-func (g *MatePuzzleGenerator) getBestMove(position *chess.Position, depth int) *chess.Move {
+func (g *MatePuzzleGenerator) bestMove(position *chess.Position, depth int) *chess.Move {
 	search := g.analyzePosition(position, depth, 1)
 	if search == nil {
 		return nil
