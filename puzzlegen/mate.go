@@ -71,7 +71,7 @@ func (g *MatePuzzleGenerator) Start() {
 			game := chess.NewGame(f)
 			log.Printf("new position -- %s", fen)
 
-			solution := g.create(game.Position())
+			solution := g.Create(game.Position())
 			if solution != nil {
 				g.write(fen, solution)
 			}
@@ -84,7 +84,7 @@ func (g *MatePuzzleGenerator) Close() {
 }
 
 // TODO: make into a tree
-func (g *MatePuzzleGenerator) create(position *chess.Position) *chess.Game {
+func (g *MatePuzzleGenerator) Create(position *chess.Position) *chess.Game {
 	return g.mateSolutions(position)
 }
 
@@ -150,10 +150,14 @@ func (g *MatePuzzleGenerator) mateSolutions(position *chess.Position) *chess.Gam
 		exist = true
 		game.Move(mateMove)
 
-		bestReply := g.bestMove(game.Position(), g.cfg.Depth-iterations)
-		game.Move(bestReply)
+		if game.Outcome() == chess.NoOutcome {
+			bestReply := g.bestMove(game.Position(), g.cfg.Depth-iterations)
+			game.Move(bestReply)
+			iterations++
+			continue
+		}
 
-		iterations++
+		return game
 	}
 }
 
