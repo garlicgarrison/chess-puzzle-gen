@@ -41,12 +41,12 @@ type Cfg struct {
 type MatePuzzleGenerator struct {
 	cfg   Cfg
 	pool  *stockpool.StockPool
-	write func(string, *chess.Game)
+	write func(string, int, *chess.Game)
 	q     chan *chess.Position
 	quit  chan bool
 }
 
-func NewMatePuzzleGenerator(cfg Cfg, pool *stockpool.StockPool, write func(string, *chess.Game), queueLimit int) Generator[*chess.Position] {
+func NewMatePuzzleGenerator(cfg Cfg, pool *stockpool.StockPool, write func(string, int, *chess.Game), queueLimit int) Generator[*chess.Position] {
 	return &MatePuzzleGenerator{
 		cfg:   cfg,
 		pool:  pool,
@@ -71,9 +71,9 @@ func (g *MatePuzzleGenerator) Start() {
 			game := chess.NewGame(f)
 			log.Printf("new position -- %s", fen)
 
-			solution := g.Create(game.Position())
+			solution, n := g.Create(game.Position())
 			if solution != nil {
-				g.write(fen, solution)
+				g.write(fen, n, solution)
 			}
 		}
 	}()
@@ -83,8 +83,7 @@ func (g *MatePuzzleGenerator) Close() {
 	g.quit <- true
 }
 
-// TODO: make into a tree
-func (g *MatePuzzleGenerator) Create(position *chess.Position) *chess.Game {
+func (g *MatePuzzleGenerator) Create(position *chess.Position) (*chess.Game, int) {
 	return g.mateSolutions(position)
 }
 
@@ -124,40 +123,40 @@ func (g *MatePuzzleGenerator) analyzePosition(position *chess.Position, depth in
 
 	NOTE: decrease the depth every iteration by 1
 */
-func (g *MatePuzzleGenerator) mateSolutions(position *chess.Position) *chess.Game {
+func (g *MatePuzzleGenerator) mateSolutions(position *chess.Position) (*chess.Game, int) {
 	startPos, err := chess.FEN(position.String())
 	if err != nil {
-		return nil
+		return nil, 0
 	}
 
 	game := chess.NewGame(startPos)
 	if game == nil {
-		return nil
+		return nil, 0
 	}
 
-	iterations := 0
-	exist := false
+	mateIn := 0
 	for {
-		mateMove := g.mateMove(game.Position(), g.cfg.Depth-iterations)
-		if mateMove == nil && exist {
-			return game
+		mateMove, n := g.mateMove(game.Position(), g.cfg.Depth)
+		if mateMove == nil {
+			if mateIn > 0 {
+				return game, mateIn
+			} else {
+				return nil, 0
+			}
 		}
 
-		if mateMove == nil && !exist {
-			return nil
+		if mateIn == 0 {
+			mateIn = n
 		}
 
-		exist = true
 		game.Move(mateMove)
-
 		if game.Outcome() == chess.NoOutcome {
-			bestReply := g.bestMove(game.Position(), g.cfg.Depth-iterations)
+			bestReply := g.bestMove(game.Position(), g.cfg.Depth)
 			game.Move(bestReply)
-			iterations++
 			continue
 		}
 
-		return game
+		return game, mateIn
 	}
 }
 
@@ -165,12 +164,12 @@ func (g *MatePuzzleGenerator) mateSolutions(position *chess.Position) *chess.Gam
 	NOTE: if all the scores are the same, there could possibly be other lines
 	that have the same exact score, therefore, the result is incomplete and invalid
 
-	This returns the moves with the shortest mating moves
+	This returns the moves with the shortest mating moves, and mate in N
 */
-func (g *MatePuzzleGenerator) mateMove(position *chess.Position, depth int) *chess.Move {
+func (g *MatePuzzleGenerator) mateMove(position *chess.Position, depth int) (*chess.Move, int) {
 	search := g.analyzePosition(position, depth, g.cfg.MultiPV)
 	if search == nil {
-		return nil
+		return nil, 0
 	}
 
 	pvs := search.MultiPV
@@ -192,13 +191,13 @@ func (g *MatePuzzleGenerator) mateMove(position *chess.Position, depth int) *che
 		}
 
 		if minMate == info.Score.Mate {
-			return nil
+			return nil, 0
 		}
 
-		return solution
+		return solution, minMate
 	}
 
-	return solution
+	return solution, minMate
 }
 
 func (g *MatePuzzleGenerator) bestMove(position *chess.Position, depth int) *chess.Move {

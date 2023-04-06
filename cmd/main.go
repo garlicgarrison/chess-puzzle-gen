@@ -84,13 +84,14 @@ func main() {
 type Puzzle struct {
 	Position string   `json:"position"`
 	Solution []string `json:"solution"`
+	MateIn   int      `json:"mate_in"`
 }
 
 type Puzzles struct {
 	Puzzles []Puzzle `json:"puzzles"`
 }
 
-func write(fen string, sol *chess.Game) {
+func write(fen string, mateIn int, sol *chess.Game) {
 	f, err := ioutil.ReadFile("puzzles.json")
 	if err != nil {
 		log.Printf("read error -- %s", err)
@@ -107,6 +108,7 @@ func write(fen string, sol *chess.Game) {
 	puzzle := Puzzle{
 		Position: fen,
 		Solution: []string{},
+		MateIn:   mateIn,
 	}
 
 	solution := []string{}
