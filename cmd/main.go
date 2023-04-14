@@ -51,7 +51,7 @@ func main() {
 			}
 
 			// initilialize mate generator
-			gen := puzzlegen.NewMatePuzzleGenerator(puzzlegen.Cfg{
+			gen := puzzlegen.NewMatePuzzleGenerator(&puzzlegen.Cfg{
 				puzzlegen.AnalysisConfig{
 					Depth:   depth,
 					MultiPV: multipv,
@@ -81,16 +81,6 @@ func main() {
 	}
 }
 
-type Puzzle struct {
-	Position string   `json:"position"`
-	Solution []string `json:"solution"`
-	MateIn   int      `json:"mate_in"`
-}
-
-type Puzzles struct {
-	Puzzles []Puzzle `json:"puzzles"`
-}
-
 func write(fen string, mateIn int, sol *chess.Game) {
 	f, err := ioutil.ReadFile("puzzles.json")
 	if err != nil {
@@ -98,14 +88,14 @@ func write(fen string, mateIn int, sol *chess.Game) {
 		return
 	}
 
-	p := &Puzzles{}
+	p := &puzzlegen.Puzzles{}
 	err = json.Unmarshal(f, p)
 	if err != nil {
 		log.Printf("unmarshal error -- %s", err)
 		return
 	}
 
-	puzzle := Puzzle{
+	puzzle := puzzlegen.Puzzle{
 		Position: fen,
 		Solution: []string{},
 		MateIn:   mateIn,

@@ -39,14 +39,14 @@ type Cfg struct {
 }
 
 type MatePuzzleGenerator struct {
-	cfg   Cfg
+	cfg   *Cfg
 	pool  *stockpool.StockPool
 	write func(string, int, *chess.Game)
 	q     chan *chess.Position
 	quit  chan bool
 }
 
-func NewMatePuzzleGenerator(cfg Cfg, pool *stockpool.StockPool, write func(string, int, *chess.Game), queueLimit int) Generator[*chess.Position] {
+func NewMatePuzzleGenerator(cfg *Cfg, pool *stockpool.StockPool, write func(string, int, *chess.Game), queueLimit int) Generator[*chess.Position] {
 	return &MatePuzzleGenerator{
 		cfg:   cfg,
 		pool:  pool,

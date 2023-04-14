@@ -16,7 +16,7 @@ var (
 	ErrInvalidFEN          = errors.New("invalid fen")
 )
 
-var pieceToBit = map[rune]int8{
+var PieceToBit = map[rune]int8{
 	'P': 1,
 	'N': 2,
 	'B': 3,
@@ -31,7 +31,7 @@ var pieceToBit = map[rune]int8{
 	'k': 14,
 }
 
-var bitToPiece = map[int8]rune{
+var BitToPiece = map[int8]rune{
 	1:  'P',
 	2:  'N',
 	3:  'B',
@@ -134,7 +134,7 @@ func GenerateRandomFEN(cfg PuzzleConfig) (string, error) {
 				}
 
 				if board[pRow][pCol] == 0 {
-					board[pRow][pCol] = pieceToBit[piece]
+					board[pRow][pCol] = PieceToBit[piece]
 					break
 				}
 			}
@@ -147,7 +147,7 @@ func GenerateRandomFEN(cfg PuzzleConfig) (string, error) {
 				continue
 			}
 
-			piece := bitToPiece[val]
+			piece := BitToPiece[val]
 			attacks := attacks(piece, board, int8(i), int8(j))
 			for _, a := range attacks {
 				if unicode.IsUpper(piece) {
@@ -164,7 +164,7 @@ func GenerateRandomFEN(cfg PuzzleConfig) (string, error) {
 		pRow, pCol := int8(rand.Intn(8)), int8(rand.Intn(8))
 
 		if board[pRow][pCol] == 0 && !blackAttacks[squareHash(pRow, pCol)] {
-			board[pRow][pCol] = pieceToBit['K']
+			board[pRow][pCol] = PieceToBit['K']
 			attacks := kingAttacks(board, pRow, pCol)
 			for _, a := range attacks {
 				whiteAttacks[a] = true
@@ -178,7 +178,7 @@ func GenerateRandomFEN(cfg PuzzleConfig) (string, error) {
 		pRow, pCol := int8(rand.Intn(8)), int8(rand.Intn(8))
 
 		if board[pRow][pCol] == 0 && !whiteAttacks[squareHash(pRow, pCol)] {
-			board[pRow][pCol] = pieceToBit['k']
+			board[pRow][pCol] = PieceToBit['k']
 			break
 		}
 	}
@@ -216,7 +216,7 @@ func MutateFEN(fen string) (string, error) {
 				continue
 			}
 
-			pieceBit, ok := pieceToBit[p]
+			pieceBit, ok := PieceToBit[p]
 			if !ok {
 				skip, err := strconv.ParseInt(string(p), 10, 8)
 				if err != nil {
@@ -238,7 +238,7 @@ func MutateFEN(fen string) (string, error) {
 	if randomPiece == '0' {
 		board[randRow][randCol] = 0
 	} else {
-		board[randRow][randCol] = pieceToBit[randomPiece]
+		board[randRow][randCol] = PieceToBit[randomPiece]
 	}
 
 	// Add attacks
@@ -250,7 +250,7 @@ func MutateFEN(fen string) (string, error) {
 				continue
 			}
 
-			piece := bitToPiece[val]
+			piece := BitToPiece[val]
 			attacks := attacks(piece, board, int8(i), int8(j))
 			for _, a := range attacks {
 				if unicode.IsUpper(piece) {
@@ -274,7 +274,7 @@ func MutateFEN(fen string) (string, error) {
 		}
 
 		if board[pRow][pCol] == 0 && !blackAttacks[squareHash(pRow, pCol)] {
-			board[pRow][pCol] = pieceToBit['K']
+			board[pRow][pCol] = PieceToBit['K']
 			attacks := kingAttacks(board, pRow, pCol)
 			for _, a := range attacks {
 				whiteAttacks[a] = true
@@ -295,7 +295,7 @@ func MutateFEN(fen string) (string, error) {
 		}
 
 		if board[pRow][pCol] == 0 && !whiteAttacks[squareHash(pRow, pCol)] {
-			board[pRow][pCol] = pieceToBit['k']
+			board[pRow][pCol] = PieceToBit['k']
 			break
 		}
 	}
@@ -484,7 +484,7 @@ func writeFEN(sb *strings.Builder, player int8, board [8][8]int8, blackAttacks, 
 			if empty != 0 {
 				sb.WriteString(fmt.Sprintf("%d", empty))
 			}
-			sb.WriteRune(bitToPiece[val])
+			sb.WriteRune(BitToPiece[val])
 			empty = 0
 		}
 
@@ -532,12 +532,12 @@ func writeFEN(sb *strings.Builder, player int8, board [8][8]int8, blackAttacks, 
 EnPassant:
 	sb.WriteRune(' ')
 	eSquare := rand.Intn(8)
-	if player == 0 && board[3][eSquare] == pieceToBit['p'] &&
+	if player == 0 && board[3][eSquare] == PieceToBit['p'] &&
 		board[2][eSquare]+board[1][eSquare] == 0 {
 		sb.WriteRune(rune(eSquare + 97))
 		sb.WriteString(fmt.Sprintf("%d", 6))
 	} else if player == 1 &&
-		board[4][eSquare] == pieceToBit['P'] &&
+		board[4][eSquare] == PieceToBit['P'] &&
 		board[5][eSquare]+board[6][eSquare] == 0 {
 		sb.WriteRune(rune(eSquare + 97))
 		sb.WriteString(fmt.Sprintf("%d", 3))
