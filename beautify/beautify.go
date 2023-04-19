@@ -10,7 +10,7 @@ import (
 )
 
 func energy(deltaE float64, temperature float64) float64 {
-	return math.Pow(math.E, deltaE/temperature)
+	return math.Pow(math.E, -1*deltaE/temperature)
 }
 
 type Method string
@@ -29,6 +29,8 @@ type AnnealConfig struct {
 	Method          Method
 	Iterations      int
 	AcceptableScore float64
+
+	NumPieces int
 }
 
 type Annealer struct {
@@ -45,12 +47,11 @@ func NewAnnealer(cfg AnnealConfig, g puzzlegen.Generator[*chess.Position]) *Anne
 
 func (a *Annealer) Anneal(p *puzzlegen.Puzzle) *puzzlegen.Puzzle {
 	temperature := a.cfg.InitTemp
-	currentScore := Score(*p)
+	currentScore := a.Score(*p)
 	nextScore := 0.0
-
 	for temperature >= a.cfg.FinalTemp {
 		for i := 0; i < a.cfg.Iterations; i++ {
-			nextFEN, err := puzzlegen.MutateFEN(p.Position)
+			nextFEN, err := puzzlegen.MutateFEN(p.Position, a.cfg.NumPieces)
 			if err != nil {
 				return nil
 			}
@@ -61,8 +62,9 @@ func (a *Annealer) Anneal(p *puzzlegen.Puzzle) *puzzlegen.Puzzle {
 				return nil
 			}
 
+			var puzzle *puzzlegen.Puzzle
 			game := chess.NewGame(f)
-			sol, mateIn := a.g.Create(game.Position())
+			sol, res := a.g.Create(game.Position())
 			solution := []string{}
 			if sol != nil {
 				for _, m := range sol.Moves() {
@@ -70,21 +72,31 @@ func (a *Annealer) Anneal(p *puzzlegen.Puzzle) *puzzlegen.Puzzle {
 				}
 			}
 
-			puzzle := &puzzlegen.Puzzle{
-				Position: nextFEN,
-				Solution: solution,
-				MateIn:   mateIn,
+			if res == nil {
+				puzzle = &puzzlegen.Puzzle{
+					Position: nextFEN,
+					Solution: solution,
+					MateIn:   0,
+					CP:       0,
+				}
+			} else {
+				puzzle = &puzzlegen.Puzzle{
+					Position: nextFEN,
+					Solution: solution,
+					MateIn:   res.Info.Score.Mate,
+					CP:       res.Info.Score.CP,
+				}
 			}
 
-			if len(solution) > 0 {
-				nextScore = Score(*puzzle)
-			}
-
+			nextScore = a.Score(*puzzle)
+			log.Printf("nextScore: %f", nextScore)
+			log.Printf("currentScore: %f", currentScore)
 			if nextScore > currentScore {
 				p = puzzle
 				currentScore = nextScore
 			} else {
 				energy := energy(currentScore-nextScore, temperature)
+				log.Printf("energy: %f", energy)
 				if energy > rand.Float64() {
 					p = puzzle
 					currentScore = nextScore

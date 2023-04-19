@@ -1,18 +1,19 @@
-package beautify
+package main
 
 import (
+	"encoding/json"
 	"io/ioutil"
 	"log"
-	"testing"
 	"time"
 
+	"github.com/garlicgarrison/chess-puzzle-gen/beautify"
 	"github.com/garlicgarrison/chess-puzzle-gen/puzzlegen"
 	"github.com/garlicgarrison/chess-puzzle-gen/stockpool"
 	"github.com/garlicgarrison/go-chess"
 	"gopkg.in/yaml.v2"
 )
 
-func TestAnneal(t *testing.T) {
+func main() {
 	// initialize stockfish pool
 	pool, err := stockpool.NewStockPool("stockfish", 1, 8, 10)
 	if err != nil {
@@ -20,7 +21,7 @@ func TestAnneal(t *testing.T) {
 	}
 
 	// get puzzle config
-	yamlConfig, err := ioutil.ReadFile("../config/pieces.yaml")
+	yamlConfig, err := ioutil.ReadFile("config/pieces.yaml")
 	if err != nil {
 		panic(err)
 	}
@@ -34,19 +35,19 @@ func TestAnneal(t *testing.T) {
 	// initilialize mate generator
 	gen := puzzlegen.NewMatePuzzleGenerator(&puzzlegen.Cfg{
 		puzzlegen.AnalysisConfig{
-			Depth:   10,
+			Depth:   14,
 			MultiPV: 2,
 		},
 		config,
 	}, pool, func(s string, i int, g *chess.Game) {}, 10)
 
-	beautify := NewAnnealer(AnnealConfig{
-		InitTemp:        500,
-		FinalTemp:       -1,
-		Alpha:           10,
-		Beta:            0,
-		Method:          LINEAR,
-		Iterations:      5,
+	beautify := beautify.NewAnnealer(beautify.AnnealConfig{
+		InitTemp:        200,
+		FinalTemp:       0.5,
+		Alpha:           1,
+		Beta:            0.02,
+		Method:          beautify.LINEAR,
+		Iterations:      1000,
 		AcceptableScore: 10,
 
 		NumPieces: 5,
@@ -60,7 +61,39 @@ func TestAnneal(t *testing.T) {
 
 	now := time.Now()
 	puzzle := beautify.Anneal(&controlPuzzle)
+	if puzzle != nil {
+		write(*puzzle)
+	}
 
 	log.Printf("puzzle fen: %s", puzzle.Position)
 	log.Printf("time: %d", time.Since(now))
+}
+
+func write(puzzle puzzlegen.Puzzle) {
+	f, err := ioutil.ReadFile("puzzles.json")
+	if err != nil {
+		log.Printf("read error -- %s", err)
+		return
+	}
+
+	p := &puzzlegen.Puzzles{}
+	err = json.Unmarshal(f, p)
+	if err != nil {
+		log.Printf("unmarshal error -- %s", err)
+		return
+	}
+
+	p.Puzzles = append(p.Puzzles, puzzle)
+
+	b, err := json.Marshal(p)
+	if err != nil {
+		log.Printf("marshal error -- %s", err)
+		return
+	}
+
+	err = ioutil.WriteFile("puzzles.json", b, 0777)
+	if err != nil {
+		log.Printf("write error -- %s", err)
+		return
+	}
 }

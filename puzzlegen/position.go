@@ -3,13 +3,15 @@ package puzzlegen
 import (
 	"errors"
 	"fmt"
+	"math"
 	"math/rand"
 	"strconv"
 	"strings"
 	"unicode"
 )
 
-const nonKingPieces = "PNBRQpnbrq0"
+const NonKingPieces = "PNBRQpnbrq"
+const NoiseSTD = 0.5
 
 var (
 	ErrInvalidPuzzleConfig = errors.New("pieces must add up to 30")
@@ -44,6 +46,21 @@ var BitToPiece = map[int8]rune{
 	12: 'r',
 	13: 'q',
 	14: 'k',
+}
+
+var StartPieces = map[rune]int{
+	'P': 8,
+	'N': 2,
+	'B': 2,
+	'R': 2,
+	'Q': 1,
+	'K': 1,
+	'p': 8,
+	'n': 2,
+	'b': 2,
+	'r': 2,
+	'q': 1,
+	'k': 1,
 }
 
 var castleSquares = map[rune][][]int8{
@@ -195,15 +212,29 @@ func GenerateRandomFEN(cfg PuzzleConfig) (string, error) {
 	We can mutate a string by first adding the non-king pieces first, and then adding/removing
 	one of those pieces, and then adding the kings with enpassant/casting rights
 	We have to assume the fen is a valid position to start with
+
+	asymptote is the number of pieces we want to converge to
 */
-func MutateFEN(fen string) (string, error) {
+func MutateFEN(fen string, asymptote int) (string, error) {
+	if asymptote > 30 {
+		return "", ErrInvalidFEN
+	}
+
 	board := [8][8]int8{}
 	fen = strings.TrimSpace(fen)
 	parts := strings.Split(fen, " ")
 
+	startMap := make(map[rune]int)
+	for key, value := range StartPieces {
+		startMap[key] = value
+	}
+
 	var blackK int8
 	var whiteK int8
+
 	rankStrs := strings.Split(parts[0], "/")
+	totalPieces := 0
+
 	for rank, row := range rankStrs {
 		var file int8
 		for _, p := range row {
@@ -228,17 +259,80 @@ func MutateFEN(fen string) (string, error) {
 			}
 
 			board[rank][file] = pieceBit
+			startMap[p]--
 			file++
+			totalPieces++
 		}
 	}
 
+	noise := rand.NormFloat64()*NoiseSTD + 1
+	toAdd := int(math.Floor((float64(asymptote) - float64(totalPieces)) * noise))
+	if toAdd < -1*totalPieces {
+		toAdd = 1
+	} else if toAdd+totalPieces > 30 {
+		toAdd = 30 - totalPieces
+	}
+
+	pieceOperations := int(math.Abs(float64(toAdd)))
 	randRow := rand.Intn(8)
 	randCol := rand.Intn(8)
-	randomPiece := rune(nonKingPieces[rand.Intn(8)])
-	if randomPiece == '0' {
-		board[randRow][randCol] = 0
-	} else {
-		board[randRow][randCol] = PieceToBit[randomPiece]
+	if toAdd == 0 {
+		for {
+			randomPiece := rune(NonKingPieces[rand.Intn(8)])
+			pieceToRemove := board[randRow][randCol]
+			if (randomPiece == 'P' || randomPiece == 'p') && (randRow == 7 || randRow == 0) ||
+				board[randRow][randCol] == 0 ||
+				PieceToBit[randomPiece] == pieceToRemove {
+				randRow = rand.Intn(8)
+				randCol = rand.Intn(8)
+				continue
+			}
+			startMap[BitToPiece[pieceToRemove]]++
+
+			for {
+				randRow = rand.Intn(8)
+				randCol = rand.Intn(8)
+				startMap[randomPiece]--
+				if board[randRow][randCol] == 0 &&
+					!((randomPiece == 'P' || randomPiece == 'p') && (randRow == 7 || randRow == 0)) {
+					board[randRow][randCol] = PieceToBit[randomPiece]
+					break
+				}
+			}
+
+			break
+		}
+	}
+
+	for i := 0; i < pieceOperations; i++ {
+		if toAdd > 0 {
+			for {
+				randomPiece := rune(NonKingPieces[rand.Intn(8)])
+				if (randomPiece == 'P' || randomPiece == 'p') && (randRow == 7 || randRow == 0) ||
+					startMap[randomPiece] == 0 ||
+					board[randRow][randCol] != 0 {
+					randRow = rand.Intn(8)
+					randCol = rand.Intn(8)
+					continue
+				}
+
+				board[randRow][randCol] = PieceToBit[randomPiece]
+				startMap[randomPiece]--
+				break
+			}
+		} else if toAdd < 0 {
+			for {
+				if board[randRow][randCol] != 0 {
+					pieceToRemove := board[randRow][randCol]
+					startMap[BitToPiece[pieceToRemove]]++
+					board[randRow][randCol] = 0
+					break
+				}
+
+				randRow = rand.Intn(8)
+				randCol = rand.Intn(8)
+			}
+		}
 	}
 
 	// Add attacks

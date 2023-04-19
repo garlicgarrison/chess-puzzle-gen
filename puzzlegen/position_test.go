@@ -25,9 +25,11 @@ func TestPosition(t *testing.T) {
 	}
 	log.Printf("fen generated -- %s", fen)
 
-	fen, err = MutateFEN(fen)
-	if err != nil {
-		t.Fatalf("err -- %s", err)
+	for i := 0; i < 10; i++ {
+		fen, err = MutateFEN(fen, 5)
+		if err != nil {
+			t.Fatalf("err -- %s", err)
+		}
+		log.Printf("fen mutated -- %s", fen)
 	}
-	log.Printf("fen mutated -- %s", fen)
 }
